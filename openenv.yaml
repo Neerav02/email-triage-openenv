@@ -1,0 +1,60 @@
+name: email-triage-openenv
+version: "1.0.0"
+description: >
+  A real-world OpenEnv environment where AI agents manage professional email
+  inboxes. Agents classify email priority, draft replies for urgent messages,
+  and archive/delete junk across three tasks of increasing difficulty.
+domain: productivity
+tags: [openenv, email, triage, nlp, agent, productivity]
+license: MIT
+
+observation_space:
+  type: object
+  fields:
+    inbox:            {type: array,   description: All emails in episode}
+    processed:        {type: array,   description: Agent decisions so far}
+    current_email:    {type: object,  description: Next unclassified email}
+    step_number:      {type: integer}
+    max_steps:        {type: integer}
+    task_id:          {type: string,  enum: [task1, task2, task3]}
+    task_description: {type: string}
+    available_actions:{type: array}
+
+action_space:
+  type: object
+  fields:
+    action_type: {type: string, enum: [classify, reply, archive, delete, read, skip], required: true}
+    email_id:    {type: string, required: true}
+    priority:    {type: string, enum: [urgent, high, normal, low, spam]}
+    reply_text:  {type: string, description: Min 10 words for reply action}
+    label:       {type: string}
+
+reward:
+  type: float
+  range: [0.0, 1.0]
+  shaped: true
+  description: >
+    Per-step partial rewards: correct classify +0.10, quality reply +0.15,
+    correct archive +0.08, step cost -0.005.
+    Episode end: deterministic grader score overrides cumulative total.
+
+tasks:
+  - {id: task1, name: Priority Classification, difficulty: easy,   max_steps: 20, inbox_size: 10}
+  - {id: task2, name: Triage and Reply,        difficulty: medium, max_steps: 40, inbox_size: 15}
+  - {id: task3, name: Full Inbox Zero,         difficulty: hard,   max_steps: 60, inbox_size: 20}
+
+endpoints:
+  reset:    {method: POST, path: /reset}
+  step:     {method: POST, path: /step}
+  state:    {method: GET,  path: /state}
+  tasks:    {method: GET,  path: /tasks}
+  grader:   {method: POST, path: /grader}
+  baseline: {method: POST, path: /baseline}
+  health:   {method: GET,  path: /health}
+
+baseline:
+  provider: xAI Grok
+  model: grok-3-mini
+  script: baseline_inference.py
+  requires_env: GROK_API_KEY
+  scores: {task1: 0.82, task2: 0.68, task3: 0.55}
