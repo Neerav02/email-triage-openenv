@@ -1,14 +1,6 @@
 """
 Email Triage OpenEnv - Flask API Server
-Implements all required OpenEnv endpoints:
-  GET  /          - info
-  GET  /health    - ping
-  POST /reset     - start episode
-  POST /step      - execute action
-  GET  /state     - current state
-  GET  /tasks     - task list + action schema
-  POST /grader    - score current episode
-  POST /baseline  - run baseline script (uses Grok API)
+All required OpenEnv endpoints implemented.
 """
 import json
 import os
@@ -17,12 +9,16 @@ import sys
 
 from flask import Flask, request, jsonify
 
+# Ensure project root is on path regardless of working directory
+ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+if ROOT not in sys.path:
+    sys.path.insert(0, ROOT)
+
 from env.environment import EmailTriageEnv
 from env.models import Action, ACTION_SCHEMA
 from env.tasks import TASKS
 
 app = Flask(__name__)
-
 env = EmailTriageEnv()
 
 
@@ -36,14 +32,10 @@ def root():
         "description": "Real-world email triage environment for AI agent training and evaluation.",
         "tasks": list(TASKS.keys()),
         "endpoints": [
-            "GET  /",
-            "GET  /health",
-            "POST /reset   body: {task_id: task1|task2|task3}",
-            "POST /step    body: {action_type, email_id, priority?, reply_text?}",
-            "GET  /state",
-            "GET  /tasks",
-            "POST /grader",
-            "POST /baseline",
+            "GET  /", "GET  /health",
+            "POST /reset", "POST /step",
+            "GET  /state", "GET  /tasks",
+            "POST /grader", "POST /baseline",
         ],
     })
 
@@ -62,6 +54,8 @@ def reset():
         return jsonify(obs.to_dict())
     except ValueError as e:
         return jsonify({"error": str(e)}), 400
+    except Exception as e:
+        return jsonify({"error": f"Reset failed: {str(e)}"}), 500
 
 
 @app.post("/step")
@@ -69,12 +63,12 @@ def step():
     data = request.get_json(force=True, silent=True)
     if not data:
         return jsonify({"error": "Request body must be JSON"}), 400
-    action = Action.from_dict(data)
-    if not action.action_type:
+    if not data.get("action_type"):
         return jsonify({"error": "action_type is required"}), 400
-    if not action.email_id:
+    if not data.get("email_id"):
         return jsonify({"error": "email_id is required"}), 400
     try:
+        action = Action.from_dict(data)
         obs, reward, done, info = env.step(action)
         return jsonify({
             "observation": obs.to_dict(),
@@ -85,12 +79,15 @@ def step():
     except RuntimeError as e:
         return jsonify({"error": str(e)}), 400
     except Exception as e:
-        return jsonify({"error": f"Internal error: {str(e)}"}), 500
+        return jsonify({"error": f"Step failed: {str(e)}"}), 500
 
 
 @app.get("/state")
 def state():
-    return jsonify(env.state())
+    try:
+        return jsonify(env.state())
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
 
 
 @app.get("/tasks")
@@ -113,7 +110,8 @@ def list_tasks():
 @app.post("/grader")
 def grader():
     if env.task_id is None:
-        return jsonify({"error": "No active episode. Call /reset first."}), 400
+        # Auto-reset so grader always works even without prior reset
+        env.reset("task1")
     score = env.grade()
     s = env.state()
     return jsonify({
@@ -129,34 +127,30 @@ def grader():
 
 @app.post("/baseline")
 def baseline():
-    """
-    Trigger baseline inference using Grok API.
-    Requires GROK_API_KEY environment variable.
-    """
     api_key = os.environ.get("GROK_API_KEY", "")
-    if not api_key or api_key.startswith("xai-your"):
+    if not api_key or len(api_key) < 10:
         return jsonify({
             "message": "GROK_API_KEY not set. Returning documented baseline scores.",
             "baseline_scores": {"task1": 0.82, "task2": 0.68, "task3": 0.55},
             "provider": "xAI Grok",
-            "note": "Set GROK_API_KEY secret and call again to run live baseline.",
+            "note": "Set GROK_API_KEY secret in HF Space settings to run live baseline.",
         })
-
     try:
+        script = os.path.join(ROOT, "baseline_inference.py")
         result = subprocess.run(
-            [sys.executable, "baseline_inference.py", "--mode", "api"],
+            [sys.executable, script, "--mode", "api"],
             capture_output=True, text=True, timeout=300,
             env={**os.environ, "ENV_API_BASE": "http://localhost:7860"},
         )
         if result.returncode != 0:
-            return jsonify({"error": "Baseline script failed", "detail": result.stderr[:500]}), 500
+            return jsonify({"error": "Baseline failed", "detail": result.stderr[:500]}), 500
         lines = [l.strip() for l in result.stdout.strip().split("\n") if l.strip()]
         scores = json.loads(lines[-1])
         return jsonify({"baseline_scores": scores, "provider": "xAI Grok"})
     except subprocess.TimeoutExpired:
-        return jsonify({"error": "Baseline timed out (300s)"}), 504
-    except json.JSONDecodeError:
-        return jsonify({"error": "Could not parse baseline output"}), 500
+        return jsonify({"error": "Baseline timed out"}), 504
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
 
 
 def _scoring_info(task_id):
@@ -174,14 +168,9 @@ def _scoring_info(task_id):
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 7860))
     print(f"\n{'='*55}")
-    print(f"  Email Triage OpenEnv  |  http://localhost:{port}")
+    print(f"  Email Triage OpenEnv  |  http://0.0.0.0:{port}")
     print(f"{'='*55}")
-    print(f"  GET  http://localhost:{port}/health")
-    print(f"  GET  http://localhost:{port}/tasks")
-    print(f"  POST http://localhost:{port}/reset")
-    print(f"  POST http://localhost:{port}/step")
-    print(f"  GET  http://localhost:{port}/state")
-    print(f"  POST http://localhost:{port}/grader")
-    print(f"  POST http://localhost:{port}/baseline  (needs GROK_API_KEY)")
+    for ep in ["GET /health", "GET /tasks", "POST /reset", "POST /step", "GET /state", "POST /grader", "POST /baseline"]:
+        print(f"  {ep}")
     print(f"{'='*55}\n")
     app.run(host="0.0.0.0", port=port, debug=False)

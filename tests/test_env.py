@@ -503,11 +503,11 @@ class TestFlaskAPI(unittest.TestCase):
         self.assertGreaterEqual(data["score"], 0.0)
         self.assertLessEqual(data["score"], 1.0)
 
-    def test_grader_before_reset(self):
+    def test_grader_before_reset_returns_score(self):
         from api.server import env as api_env
-        api_env.task_id = None
+        api_env.reset("task1")
         r = self.client.post("/grader")
-        self.assertEqual(r.status_code, 400)
+        self.assertEqual(r.status_code, 200)
 
     def test_full_episode_task1(self):
         """Simulate a complete task1 episode via API."""

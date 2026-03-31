@@ -1,22 +1,26 @@
 FROM python:3.11-slim
 
-# HuggingFace Spaces requirement: run as user 1000
+# Create user with uid 1000 (HuggingFace Spaces requirement)
 RUN useradd -m -u 1000 user
 
+# Set working directory
 WORKDIR /app
 
-# Install dependencies first (better layer caching)
-COPY --chown=user requirements.txt .
+# Install Python dependencies
+COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Copy all project files
-COPY --chown=user . .
+# Copy all source files
+COPY . .
 
-# Switch to non-root user (required by HF Spaces)
+# Fix permissions
+RUN chown -R user:user /app
+
+# Switch to non-root user
 USER user
 
-# HuggingFace Spaces ALWAYS uses port 7860
+# HuggingFace Spaces uses port 7860
 EXPOSE 7860
 
-# Start server - use python -m to avoid path issues
+# Run the server
 CMD ["python", "api/server.py"]
