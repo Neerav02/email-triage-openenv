@@ -1,0 +1,44 @@
+[build-system]
+requires = ["setuptools>=68.0", "wheel"]
+build-backend = "setuptools.backends.legacy:build"
+
+[project]
+name = "email-triage-openenv"
+version = "1.0.0"
+description = "A real-world OpenEnv environment for email triage agent training and evaluation"
+license = {text = "MIT"}
+requires-python = ">=3.9"
+keywords = ["openenv", "email", "triage", "agent", "reinforcement-learning", "nlp"]
+dependencies = [
+    "flask>=3.0.0",
+    "requests>=2.32.0",
+    "openai>=1.30.0",
+    "PyYAML>=6.0.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0.0",
+]
+
+[project.urls]
+Homepage = "https://huggingface.co/spaces/Neerav02/email-openenv"
+Repository = "https://github.com/Neerav02/email-triage-openenv"
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["env*", "api*"]
+
+[tool.openenv]
+name = "email-triage-openenv"
+version = "1.0.0"
+domain = "productivity"
+entry_point = "api.server:app"
+reset_endpoint = "/reset"
+step_endpoint = "/step"
+state_endpoint = "/state"
+tasks_endpoint = "/tasks"
+grader_endpoint = "/grader"
+baseline_endpoint = "/baseline"
+health_endpoint = "/health"
+port = 7860
