@@ -23,7 +23,7 @@ dev = [
 ]
 
 [project.scripts]
-server = "api.server:app"
+server = "server.app:main"
 
 [project.urls]
 Homepage = "https://huggingface.co/spaces/Neerav02/email-openenv"
@@ -37,7 +37,7 @@ include = ["env*", "api*"]
 name = "email-triage-openenv"
 version = "1.0.0"
 domain = "productivity"
-entry_point = "api.server:app"
+entry_point = "server.app:main"
 reset_endpoint = "/reset"
 step_endpoint = "/step"
 state_endpoint = "/state"
