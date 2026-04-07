@@ -95,7 +95,7 @@ python api/server.py
 
 ```bash
 docker build -t email-triage-openenv .
-docker run -p 7860:7860 -e GROK_API_KEY=xai-... email-triage-openenv
+docker run -p 7860:7860 -e HF_TOKEN=your-token -e API_BASE_URL=https://api.example.com/v1 -e MODEL_NAME=grok-3-mini email-triage-openenv
 ```
 
 ### Test all endpoints
@@ -120,7 +120,7 @@ curl -X POST http://localhost:7860/grader
 | GET | `/state` | Current episode snapshot |
 | GET | `/tasks` | All tasks + action schema |
 | POST | `/grader` | Score current episode |
-| POST | `/baseline` | Run baseline (needs GROK_API_KEY) |
+| POST | `/baseline` | Run baseline (needs HF_TOKEN, API_BASE_URL, MODEL_NAME) |
 
 ---
 
