@@ -6,7 +6,7 @@ import requests
 
 API_BASE_URL = os.getenv("API_BASE_URL", "https://api.x.ai/v1")
 MODEL_NAME = os.getenv("MODEL_NAME", "grok-3-mini")
-HF_TOKEN = os.getenv("HF_TOKEN", "")
+HF_TOKEN = os.getenv("HF_TOKEN")
 ENV_API_BASE = os.getenv("ENV_API_BASE", "http://localhost:7860")
 BENCHMARK = "email-triage-openenv"
 
