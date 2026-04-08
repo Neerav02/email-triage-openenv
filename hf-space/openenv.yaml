@@ -53,8 +53,8 @@ endpoints:
   health:   {method: GET,  path: /health}
 
 baseline:
-  provider: xAI Grok
+  provider: Validation API
   model: grok-3-mini
-  script: baseline_inference.py
-  requires_env: GROK_API_KEY
+  script: inference.py
+  requires_env: HF_TOKEN
   scores: {task1: 0.82, task2: 0.68, task3: 0.55}

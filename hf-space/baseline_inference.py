@@ -1,33 +1,14 @@
-"""
-Baseline inference script for Email Triage OpenEnv.
-Uses Grok API (xAI) via the OpenAI-compatible client.
-
-Grok is fully compatible with the OpenAI Python SDK —
-just needs a different base_url and model name.
-
-Usage:
-    python baseline_inference.py                    # human-readable output
-    python baseline_inference.py --mode api         # outputs JSON on last line
-    python baseline_inference.py --task task1       # single task only
-    python baseline_inference.py --model grok-3-mini
-
-Environment variables:
-    GROK_API_KEY   required - your xAI Grok API key (starts with xai-)
-    ENV_API_BASE   optional - env server URL (default: http://localhost:7860)
-
-Get your key at: https://console.x.ai/
-"""
 import os
 import sys
 import json
-import argparse
 import time
 import requests
 
-GROK_API_KEY  = os.getenv("GROK_API_KEY", "")
-GROK_BASE_URL = "https://api.x.ai/v1"
-DEFAULT_MODEL = "grok-3-mini"
-ENV_API_BASE  = os.getenv("ENV_API_BASE", "http://localhost:7860")
+API_BASE_URL = os.getenv("API_BASE_URL", "https://api.x.ai/v1")
+MODEL_NAME = os.getenv("MODEL_NAME", "grok-3-mini")
+HF_TOKEN = os.getenv("HF_TOKEN")
+ENV_API_BASE = os.getenv("ENV_API_BASE", "http://localhost:7860")
+BENCHMARK = "email-triage-openenv"
 
 SYSTEM_PROMPT = """You are an expert email assistant helping manage a professional inbox.
 
@@ -54,30 +35,43 @@ STRATEGY:
 4. One action per turn. Respond with ONLY valid JSON.
 """
 
+def log_start(task: str, env: str, model: str):
+    print(f"[START] task={task} env={env} model={model}", flush=True)
+
+def log_step(step: int, action: str, reward: float, done: bool, error: str = None):
+    err_str = f" error={error}" if error else ""
+    print(f"[STEP] step={step} action={repr(action)} reward={reward:+.2f} done={done}{err_str}", flush=True)
+
+def log_end(success: bool, steps: int, score: float, rewards: list):
+    print(f"[END] success={success} steps={steps} score={score:.2f} rewards={rewards}", flush=True)
 
 def get_client():
     try:
         from openai import OpenAI
     except ImportError:
         print("ERROR: openai package not installed. Run: pip install openai", file=sys.stderr)
-        sys.exit(1)
-    if not GROK_API_KEY:
-        print("ERROR: GROK_API_KEY not set. Get key at https://console.x.ai/", file=sys.stderr)
-        sys.exit(1)
-    return OpenAI(api_key=GROK_API_KEY, base_url=GROK_BASE_URL)
+        sys.exit(0)
+    
+    key = HF_TOKEN or "dummy_key"
+    if not HF_TOKEN:
+        print("WARNING: HF_TOKEN not set. Using dummy key to prevent crash.", file=sys.stderr)
+        
+    try:
+        return OpenAI(api_key=key, base_url=API_BASE_URL)
+    except Exception as e:
+        print(f"ERROR: Failed to init client: {e}", file=sys.stderr)
+        return None
 
-
-def run_task(client, task_id: str, model: str, verbose: bool = True) -> float:
+def run_task(client, task_id: str, model: str) -> float:
     try:
         r = requests.post(f"{ENV_API_BASE}/reset", json={"task_id": task_id}, timeout=15)
         r.raise_for_status()
         obs = r.json()
     except Exception as e:
         print(f"  ERROR connecting to {ENV_API_BASE}: {e}", file=sys.stderr)
+        log_start(task=task_id, env=BENCHMARK, model=model)
+        log_end(success=False, steps=0, score=0.0, rewards=[])
         return 0.0
-
-    if verbose:
-        print(f"  Inbox: {len(obs['inbox'])} emails | Max steps: {obs['max_steps']}")
 
     inbox_text = "\n\n".join(
         f"ID: {e['id']}\nFrom: {e['sender']}\nSubject: {e['subject']}\nBody: {e['body'][:250]}"
@@ -97,6 +91,9 @@ def run_task(client, task_id: str, model: str, verbose: bool = True) -> float:
     step = 0
     final_score = 0.0
     errors = 0
+    rewards = []
+    
+    log_start(task=task_id, env=BENCHMARK, model=model)
 
     while not done and step < obs["max_steps"] + 5:
         step += 1
@@ -110,6 +107,10 @@ def run_task(client, task_id: str, model: str, verbose: bool = True) -> float:
             hint += f" Unclassified: {unclassified}. Next JSON action:"
             messages.append({"role": "user", "content": hint})
 
+        error_msg = None
+        action_text = ""
+        action_json = None
+        
         try:
             completion = client.chat.completions.create(
                 model=model,
@@ -122,15 +123,17 @@ def run_task(client, task_id: str, model: str, verbose: bool = True) -> float:
             action_json = json.loads(action_text)
             messages.append({"role": "assistant", "content": action_text})
             errors = 0
-        except json.JSONDecodeError:
+        except json.JSONDecodeError as decode_err:
+            error_msg = f"JSONDecodeError: {decode_err}"
             errors += 1
+            log_step(step=step, action=action_text, reward=0.0, done=False, error=error_msg)
             if errors >= 5: break
             messages.append({"role": "user", "content": "Invalid JSON. Respond with ONLY a JSON object."})
             continue
         except Exception as e:
+            error_msg = f"APIError: {e}"
             errors += 1
-            if verbose:
-                print(f"    Grok error at step {step}: {e}", file=sys.stderr)
+            log_step(step=step, action="", reward=0.0, done=False, error=error_msg)
             if errors >= 5: break
             time.sleep(2)
             continue
@@ -139,84 +142,77 @@ def run_task(client, task_id: str, model: str, verbose: bool = True) -> float:
             r = requests.post(f"{ENV_API_BASE}/step", json=action_json, timeout=15)
             result = r.json()
             if "error" in result.get("info", {}):
-                messages.append({"role": "user", "content": f"Error: {result['info']['error']}. Try again."})
+                error_msg = result['info']['error']
+                messages.append({"role": "user", "content": f"Error: {error_msg}. Try again."})
                 errors += 1
+                log_step(step=step, action=action_text, reward=0.0, done=False, error=error_msg)
                 continue
         except Exception as e:
-            print(f"    Step error: {e}", file=sys.stderr)
+            error_msg = f"Env connection error: {e}"
+            log_step(step=step, action=action_text, reward=0.0, done=False, error=error_msg)
             break
 
         obs    = result["observation"]
         done   = result["done"]
-        reward = result["reward"]
+        reward_dict = result.get("reward", {})
+        total_reward = float(reward_dict.get("total", 0.0) if type(reward_dict) is dict else reward_dict)
 
-        if verbose and step % 5 == 0:
-            classified = sum(1 for e in obs["processed"] if e.get("priority"))
-            print(f"    step={step} classified={classified}/{len(obs['inbox'])} reward={reward['total']:.3f}")
+        rewards.append(total_reward)
+        log_step(step=step, action=action_text, reward=total_reward, done=done, error=None)
 
         if done:
-            final_score = reward.get("components", {}).get("final_grader_score", 0.0)
-            if verbose:
-                print(f"  Done at step {step}. Score: {final_score:.4f}")
+            final_score = float(reward_dict.get("components", {}).get("final_grader_score", 0.0) if type(reward_dict) is dict else total_reward)
             break
 
-        messages.append({"role": "user", "content": f"reward={reward['total']:.3f}. Continue."})
+        messages.append({"role": "user", "content": f"reward={total_reward:.3f}. Continue."})
 
     if not done:
         try:
             r = requests.post(f"{ENV_API_BASE}/grader", timeout=10)
-            final_score = r.json().get("score", 0.0)
-            if verbose:
-                print(f"  Max steps reached. Grader score: {final_score:.4f}")
+            final_score = float(r.json().get("score", 0.0))
         except Exception:
             pass
 
+    success = final_score >= 0.8
+    log_end(success=success, steps=step, score=final_score, rewards=rewards)
     return round(final_score, 4)
 
 
 def main():
-    parser = argparse.ArgumentParser(description="Email Triage OpenEnv Baseline - Grok/xAI")
-    parser.add_argument("--mode",  default="print", choices=["print", "api"])
-    parser.add_argument("--task",  default="all", choices=["all", "task1", "task2", "task3"])
-    parser.add_argument("--model", default=DEFAULT_MODEL)
-    args = parser.parse_args()
-    verbose = args.mode == "print"
-
-    client = get_client()
-
     try:
-        r = requests.get(f"{ENV_API_BASE}/health", timeout=10)
-        r.raise_for_status()
-        if verbose:
-            print(f"Connected to {ENV_API_BASE}")
-            print(f"Model: {args.model} | Provider: xAI Grok ({GROK_BASE_URL})")
+        for _ in range(3):
+            try:
+                r = requests.get(f"{ENV_API_BASE}/health", timeout=10)
+                r.raise_for_status()
+                break
+            except Exception:
+                time.sleep(2)
+        else:
+            r = requests.get(f"{ENV_API_BASE}/health", timeout=10)
+            r.raise_for_status()
     except Exception as e:
         print(f"ERROR: Cannot reach {ENV_API_BASE}: {e}", file=sys.stderr)
-        sys.exit(1)
+        print(json.dumps({"task1": 0.0, "task2": 0.0, "task3": 0.0}))
+        sys.exit(0)
 
-    tasks = ["task1", "task2", "task3"] if args.task == "all" else [args.task]
-    difficulties = {"task1": "easy", "task2": "medium", "task3": "hard"}
-    scores = {}
+    client = get_client()
+    if client is None:
+        print(json.dumps({"task1": 0.0, "task2": 0.0, "task3": 0.0}))
+        sys.exit(0)
 
-    for task_id in tasks:
-        if verbose:
-            print(f"\nRunning {task_id} ({difficulties[task_id]})...")
-        score = run_task(client, task_id, args.model, verbose)
-        scores[task_id] = score
-        if verbose:
-            bar = "#" * int(score * 30)
-            print(f"  {task_id}: {score:.4f}  [{bar:<30}]")
+    try:
+        tasks = ["task1", "task2", "task3"]
+        scores = {}
+        for task_id in tasks:
+            score = run_task(client, task_id, MODEL_NAME)
+            scores[task_id] = score
 
-    if verbose:
-        print(f"\n{'='*50}")
-        print("FINAL BASELINE SCORES (Grok/xAI):")
-        for tid, s in scores.items():
-            print(f"  {tid} ({difficulties[tid]:6}): {s:.4f}")
-        print(f"{'='*50}")
-
-    print(json.dumps(scores))
-    return scores
-
+        print(json.dumps(scores))
+        return scores
+    except Exception as e:
+        print(f"ERROR: Unhandled loop exception: {e}", file=sys.stderr)
+        print(json.dumps({"task1": 0.0, "task2": 0.0, "task3": 0.0}))
+        sys.exit(0)
 
 if __name__ == "__main__":
     main()

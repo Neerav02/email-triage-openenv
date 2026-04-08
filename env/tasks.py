@@ -1,10 +1,15 @@
 """
 Task definitions and graders for Email Triage OpenEnv.
-Each task has a deterministic grader that returns a score 0.0-1.0.
+Each task has a deterministic grader that returns a score strictly in (0, 1).
 """
 from dataclasses import dataclass
 from typing import List, Callable, Dict
 from env.models import EmailState
+
+
+def _clamp(score: float) -> float:
+    """Clamp score to strictly open interval (0.001, 0.999) as required by validator."""
+    return round(max(0.001, min(0.999, score)), 4)
 
 
 @dataclass
@@ -27,18 +32,18 @@ def grade_task1(processed: List[EmailState], ground_truth: Dict[str, str]) -> fl
     EASY: Correctly classify the priority of all emails.
 
     Score = (# emails correctly classified) / (total emails)
-    Range: 0.0 (all wrong or none classified) to 1.0 (all correct)
+    Range: strictly (0.001, 0.999)
     """
     if not ground_truth:
-        return 0.0
+        return 0.001
     classified = [e for e in processed if e.priority is not None]
     if not classified:
-        return 0.0
+        return 0.001
     correct = sum(
         1 for e in classified
         if e.id in ground_truth and e.priority == ground_truth[e.id]
     )
-    return round(correct / len(ground_truth), 4)
+    return _clamp(correct / len(ground_truth))
 
 
 def grade_task2(processed: List[EmailState], ground_truth: Dict[str, str]) -> float:
@@ -48,10 +53,10 @@ def grade_task2(processed: List[EmailState], ground_truth: Dict[str, str]) -> fl
     Score = 0.50 * classification_accuracy + 0.50 * reply_coverage
     - classification_accuracy = % of emails with correct priority label
     - reply_coverage = % of urgent+high emails with a reply of at least 10 words
-    Range: 0.0 to 1.0
+    Range: strictly (0.001, 0.999)
     """
     if not ground_truth:
-        return 0.0
+        return 0.001
 
     # Component 1: classification accuracy (50%)
     correct = sum(
@@ -65,7 +70,7 @@ def grade_task2(processed: List[EmailState], ground_truth: Dict[str, str]) -> fl
     # Component 2: reply coverage for urgent+high (50%)
     urgent_high_ids = {k for k, v in ground_truth.items() if v in ("urgent", "high")}
     if not urgent_high_ids:
-        return round(classify_score, 4)
+        return _clamp(classify_score)
 
     replied = [
         e for e in processed
@@ -75,7 +80,7 @@ def grade_task2(processed: List[EmailState], ground_truth: Dict[str, str]) -> fl
     ]
     reply_score = len(replied) / len(urgent_high_ids)
 
-    return round(0.50 * classify_score + 0.50 * reply_score, 4)
+    return _clamp(0.50 * classify_score + 0.50 * reply_score)
 
 
 def grade_task3(processed: List[EmailState], ground_truth: Dict[str, str]) -> float:
@@ -86,10 +91,10 @@ def grade_task3(processed: List[EmailState], ground_truth: Dict[str, str]) -> fl
     - classify:       % of emails correctly labeled
     - reply_quality:  % of urgent+high with substantive reply (>=15 words)
     - archive_score:  % of spam+low that are archived or deleted
-    Range: 0.0 to 1.0
+    Range: strictly (0.001, 0.999)
     """
     if not ground_truth:
-        return 0.0
+        return 0.001
 
     # Sub-score 1: classification (40%)
     correct = sum(
@@ -111,7 +116,7 @@ def grade_task3(processed: List[EmailState], ground_truth: Dict[str, str]) -> fl
         ]
         reply_score = len(replied) / len(urgent_high_ids)
     else:
-        reply_score = 1.0
+        reply_score = 0.999  # no urgent/high emails — full credit but never exactly 1.0
 
     # Sub-score 3: archive/delete spam+low (25%)
     junk_ids = {k for k, v in ground_truth.items() if v in ("spam", "low")}
@@ -122,10 +127,10 @@ def grade_task3(processed: List[EmailState], ground_truth: Dict[str, str]) -> fl
         ]
         archive_score = len(cleaned) / len(junk_ids)
     else:
-        archive_score = 1.0
+        archive_score = 0.999  # no junk emails — full credit but never exactly 1.0
 
     final = 0.40 * classify_score + 0.35 * reply_score + 0.25 * archive_score
-    return round(final, 4)
+    return _clamp(final)
 
 
 # ------------------------------------------------------------------

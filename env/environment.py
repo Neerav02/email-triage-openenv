@@ -222,11 +222,12 @@ class EmailTriageEnv:
         }
 
     def grade(self) -> float:
-        """Run the grader on current state. Returns score 0.0-1.0."""
+        """Run the grader on current state. Returns score strictly in (0.001, 0.999)."""
         if self.task_id is None:
-            return 0.0
+            return 0.001
         task = TASKS[self.task_id]
-        return task.grader(list(self.processed.values()), self.ground_truth)
+        score = task.grader(list(self.processed.values()), self.ground_truth)
+        return round(max(0.001, min(0.999, score)), 4)
 
     # ------------------------------------------------------------------
     # Internal
