@@ -30,7 +30,7 @@ class EmailTriageEnv:
         self.processed: Dict[str, EmailState] = {}  # email_id -> agent's EmailState
         self.step_count: int = 0
         self.done: bool = False
-        self._cumulative_reward: float = 0.0
+        self._cumulative_reward = 0.01
         self._action_history: List[Dict] = []
 
     # ------------------------------------------------------------------
@@ -56,7 +56,7 @@ class EmailTriageEnv:
         self.processed = {email.id: EmailState(id=email.id) for email in self.inbox}
         self.step_count = 0
         self.done = False
-        self._cumulative_reward = 0.0
+        self._cumulative_reward = 0.01
         self._action_history = []
 
         return self._build_observation()
@@ -84,7 +84,7 @@ class EmailTriageEnv:
         if action.email_id not in self.processed:
             components["invalid_action_penalty"] = -0.05
             reward = Reward(
-                total=max(0.0, self._cumulative_reward),
+                total=max(0.001, min(0.999, self._cumulative_reward)),
                 components=components,
                 done=False,
                 info={"error": f"Unknown email_id '{action.email_id}'",
@@ -178,7 +178,7 @@ class EmailTriageEnv:
             self.done = max_steps_reached
 
         # Final score from grader on episode end
-        final_score = 0.0
+        final_score = 0.001
         if self.done:
             final_score = task.grader(list(self.processed.values()), self.ground_truth)
             components["final_grader_score"] = final_score
@@ -222,12 +222,12 @@ class EmailTriageEnv:
         }
 
     def grade(self) -> float:
-        """Run the grader on current state. Returns score strictly in (0.001, 0.999)."""
+        """Run the grader on current state. Returns score strictly in (0, 1)."""
         if self.task_id is None:
-            return 0.001
+            return 0.01
         task = TASKS[self.task_id]
         score = task.grader(list(self.processed.values()), self.ground_truth)
-        return round(max(0.001, min(0.999, score)), 4)
+        return round(max(0.01, min(0.99, score)), 4)
 
     # ------------------------------------------------------------------
     # Internal

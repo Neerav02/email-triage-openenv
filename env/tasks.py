@@ -6,10 +6,11 @@ from dataclasses import dataclass
 from typing import List, Callable, Dict
 from env.models import EmailState
 
+_SCORE_MIN = 0.01   # never return 0.0
+_SCORE_MAX = 0.99   # never return 1.0
 
 def _clamp(score: float) -> float:
-    """Clamp score to strictly open interval (0.001, 0.999) as required by validator."""
-    return round(max(0.001, min(0.999, score)), 4)
+    return round(max(_SCORE_MIN, min(_SCORE_MAX, score)), 4)
 
 
 @dataclass
@@ -35,10 +36,10 @@ def grade_task1(processed: List[EmailState], ground_truth: Dict[str, str]) -> fl
     Range: strictly (0.001, 0.999)
     """
     if not ground_truth:
-        return 0.001
+        return _SCORE_MIN
     classified = [e for e in processed if e.priority is not None]
     if not classified:
-        return 0.001
+        return _SCORE_MIN
     correct = sum(
         1 for e in classified
         if e.id in ground_truth and e.priority == ground_truth[e.id]
@@ -56,7 +57,7 @@ def grade_task2(processed: List[EmailState], ground_truth: Dict[str, str]) -> fl
     Range: strictly (0.001, 0.999)
     """
     if not ground_truth:
-        return 0.001
+        return _SCORE_MIN
 
     # Component 1: classification accuracy (50%)
     correct = sum(
@@ -94,7 +95,7 @@ def grade_task3(processed: List[EmailState], ground_truth: Dict[str, str]) -> fl
     Range: strictly (0.001, 0.999)
     """
     if not ground_truth:
-        return 0.001
+        return _SCORE_MIN
 
     # Sub-score 1: classification (40%)
     correct = sum(
@@ -116,7 +117,7 @@ def grade_task3(processed: List[EmailState], ground_truth: Dict[str, str]) -> fl
         ]
         reply_score = len(replied) / len(urgent_high_ids)
     else:
-        reply_score = 0.999  # no urgent/high emails — full credit but never exactly 1.0
+        reply_score = _SCORE_MAX  # no urgent/high emails — full credit but never exactly 1.0
 
     # Sub-score 3: archive/delete spam+low (25%)
     junk_ids = {k for k, v in ground_truth.items() if v in ("spam", "low")}
@@ -127,7 +128,7 @@ def grade_task3(processed: List[EmailState], ground_truth: Dict[str, str]) -> fl
         ]
         archive_score = len(cleaned) / len(junk_ids)
     else:
-        archive_score = 0.999  # no junk emails — full credit but never exactly 1.0
+        archive_score = _SCORE_MAX  # no junk emails — full credit but never exactly 1.0
 
     final = 0.40 * classify_score + 0.35 * reply_score + 0.25 * archive_score
     return _clamp(final)

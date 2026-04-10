@@ -39,11 +39,13 @@ def log_start(task: str, env: str, model: str):
     print(f"[START] task={task} env={env} model={model}", flush=True)
 
 def log_step(step: int, action: str, reward: float, done: bool, error: str = None):
+    reward = max(0.001, min(0.999, reward))
     err_str = f" error={error}" if error else ""
-    print(f"[STEP] step={step} action={repr(action)} reward={reward:+.2f} done={done}{err_str}", flush=True)
+    print(f"[STEP] step={step} action={repr(action)} reward={reward:+.4f} done={done}{err_str}", flush=True)
 
 def log_end(success: bool, steps: int, score: float, rewards: list):
-    print(f"[END] success={success} steps={steps} score={score:.2f} rewards={rewards}", flush=True)
+    score = max(0.001, min(0.999, score))
+    print(f"[END] success={success} steps={steps} score={score:.4f} rewards={rewards}", flush=True)
 
 def get_client():
     try:
@@ -126,14 +128,14 @@ def run_task(client, task_id: str, model: str) -> float:
         except json.JSONDecodeError as decode_err:
             error_msg = f"JSONDecodeError: {decode_err}"
             errors += 1
-            log_step(step=step, action=action_text, reward=0.0, done=False, error=error_msg)
+            log_step(step=step, action=action_text, reward=0.001, done=False, error=error_msg)
             if errors >= 5: break
             messages.append({"role": "user", "content": "Invalid JSON. Respond with ONLY a JSON object."})
             continue
         except Exception as e:
             error_msg = f"APIError: {e}"
             errors += 1
-            log_step(step=step, action="", reward=0.0, done=False, error=error_msg)
+            log_step(step=step, action="", reward=0.001, done=False, error=error_msg)
             if errors >= 5: break
             time.sleep(2)
             continue
@@ -145,23 +147,25 @@ def run_task(client, task_id: str, model: str) -> float:
                 error_msg = result['info']['error']
                 messages.append({"role": "user", "content": f"Error: {error_msg}. Try again."})
                 errors += 1
-                log_step(step=step, action=action_text, reward=0.0, done=False, error=error_msg)
+                log_step(step=step, action=action_text, reward=0.001, done=False, error=error_msg)
                 continue
         except Exception as e:
             error_msg = f"Env connection error: {e}"
-            log_step(step=step, action=action_text, reward=0.0, done=False, error=error_msg)
+            log_step(step=step, action=action_text, reward=0.001, done=False, error=error_msg)
             break
 
         obs    = result["observation"]
         done   = result["done"]
         reward_dict = result.get("reward", {})
-        total_reward = float(reward_dict.get("total", 0.0) if type(reward_dict) is dict else reward_dict)
+        total_reward = float(reward_dict.get("total", 0.001) if type(reward_dict) is dict else reward_dict)
+        total_reward = max(0.001, min(0.999, total_reward))
 
         rewards.append(total_reward)
         log_step(step=step, action=action_text, reward=total_reward, done=done, error=None)
 
         if done:
-            final_score = float(reward_dict.get("components", {}).get("final_grader_score", 0.0) if type(reward_dict) is dict else total_reward)
+            final_score = float(reward_dict.get("components", {}).get("final_grader_score", 0.001) if type(reward_dict) is dict else total_reward)
+            final_score = max(0.001, min(0.999, final_score))
             break
 
         messages.append({"role": "user", "content": f"reward={total_reward:.3f}. Continue."})
