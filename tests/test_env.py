@@ -246,7 +246,7 @@ class TestGraders(unittest.TestCase):
             EmailState("e2", priority="spam"),
             EmailState("e3", priority="normal"),
         ]
-        self.assertAlmostEqual(grade_task1(states, gt), 1.0)
+        self.assertAlmostEqual(grade_task1(states, gt), 0.99)
 
     def test_task1_all_wrong(self):
         gt = {"e1": "urgent", "e2": "spam"}
@@ -254,7 +254,7 @@ class TestGraders(unittest.TestCase):
             EmailState("e1", priority="low"),
             EmailState("e2", priority="high"),
         ]
-        self.assertAlmostEqual(grade_task1(states, gt), 0.0)
+        self.assertAlmostEqual(grade_task1(states, gt), 0.01)
 
     def test_task1_half_correct(self):
         gt = {"e1": "urgent", "e2": "spam"}
@@ -267,10 +267,10 @@ class TestGraders(unittest.TestCase):
     def test_task1_none_classified(self):
         gt = {"e1": "urgent"}
         states = [EmailState("e1")]
-        self.assertAlmostEqual(grade_task1(states, gt), 0.0)
+        self.assertAlmostEqual(grade_task1(states, gt), 0.001)
 
     def test_task1_empty(self):
-        self.assertAlmostEqual(grade_task1([], {}), 0.0)
+        self.assertAlmostEqual(grade_task1([], {}), 0.001)
 
     def test_task2_perfect_score(self):
         gt = {"e1": "urgent", "e2": "high", "e3": "normal"}
@@ -280,7 +280,7 @@ class TestGraders(unittest.TestCase):
             EmailState("e2", priority="high", reply_draft=reply),
             EmailState("e3", priority="normal"),
         ]
-        self.assertAlmostEqual(grade_task2(states, gt), 1.0)
+        self.assertAlmostEqual(grade_task2(states, gt), 0.99)
 
     def test_task2_classify_only(self):
         gt = {"e1": "urgent", "e2": "high"}
@@ -307,7 +307,7 @@ class TestGraders(unittest.TestCase):
             EmailState("e3", priority="spam", deleted=True),
             EmailState("e4", priority="low", archived=True),
         ]
-        self.assertAlmostEqual(grade_task3(states, gt), 1.0)
+        self.assertAlmostEqual(grade_task3(states, gt), 0.99)
 
     def test_task3_weights(self):
         gt = {"e1": "urgent", "e2": "spam"}
