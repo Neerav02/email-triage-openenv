@@ -158,7 +158,7 @@ class EmailTriageEnv:
 
         # Update cumulative
         delta = sum(components.values())
-        self._cumulative_reward = max(0.0, min(1.0, self._cumulative_reward + delta))
+        self._cumulative_reward = max(0.001, min(0.999, self._cumulative_reward + delta))
 
         # Record history
         self._action_history.append({
@@ -184,7 +184,7 @@ class EmailTriageEnv:
             components["final_grader_score"] = final_score
 
         total = final_score if self.done else round(self._cumulative_reward, 4)
-        total = max(0.0, min(1.0, total))
+        total = max(0.001, min(0.999, total))
 
         reward = Reward(
             total=total,

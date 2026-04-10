@@ -70,8 +70,8 @@ def run_task(client, task_id: str, model: str) -> float:
     except Exception as e:
         print(f"  ERROR connecting to {ENV_API_BASE}: {e}", file=sys.stderr)
         log_start(task=task_id, env=BENCHMARK, model=model)
-        log_end(success=False, steps=0, score=0.0, rewards=[])
-        return 0.0
+        log_end(success=False, steps=0, score=0.001, rewards=[])
+        return 0.001
 
     inbox_text = "\n\n".join(
         f"ID: {e['id']}\nFrom: {e['sender']}\nSubject: {e['subject']}\nBody: {e['body'][:250]}"
@@ -89,7 +89,7 @@ def run_task(client, task_id: str, model: str) -> float:
 
     done = False
     step = 0
-    final_score = 0.0
+    final_score = 0.001
     errors = 0
     rewards = []
     
@@ -169,11 +169,12 @@ def run_task(client, task_id: str, model: str) -> float:
     if not done:
         try:
             r = requests.post(f"{ENV_API_BASE}/grader", timeout=10)
-            final_score = float(r.json().get("score", 0.0))
+            final_score = float(r.json().get("score", 0.001))
         except Exception:
             pass
 
     success = final_score >= 0.8
+    final_score = max(0.001, min(0.999, final_score))
     log_end(success=success, steps=step, score=final_score, rewards=rewards)
     return round(final_score, 4)
 
@@ -192,12 +193,12 @@ def main():
             r.raise_for_status()
     except Exception as e:
         print(f"ERROR: Cannot reach {ENV_API_BASE}: {e}", file=sys.stderr)
-        print(json.dumps({"task1": 0.0, "task2": 0.0, "task3": 0.0}))
+        print(json.dumps({"task1": 0.001, "task2": 0.001, "task3": 0.001}))
         sys.exit(0)
 
     client = get_client()
     if client is None:
-        print(json.dumps({"task1": 0.0, "task2": 0.0, "task3": 0.0}))
+        print(json.dumps({"task1": 0.001, "task2": 0.001, "task3": 0.001}))
         sys.exit(0)
 
     try:
@@ -211,7 +212,7 @@ def main():
         return scores
     except Exception as e:
         print(f"ERROR: Unhandled loop exception: {e}", file=sys.stderr)
-        print(json.dumps({"task1": 0.0, "task2": 0.0, "task3": 0.0}))
+        print(json.dumps({"task1": 0.001, "task2": 0.001, "task3": 0.001}))
         sys.exit(0)
 
 if __name__ == "__main__":
